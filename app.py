@@ -77,7 +77,7 @@ def initialize_system():
     return trained_models[best_algo], scaler, results
 
 st.title("Heart Disease Prediction System")
-st.caption("Developed by Arpan, Chandan & MD Belal | Indian Cardiovascular Dataset")
+st.caption("Developed by Arpan, Chandan & MD Belal")
 
 model, scaler, results = initialize_system()
 
