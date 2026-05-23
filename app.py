@@ -100,20 +100,22 @@ ARTIFACTS = ["best_model.pkl", "scaler.pkl", "results.pkl"]
 
 @st.cache_resource(show_spinner="Preparing models — please wait...")
 def load_everything():
-    # ── try pre-saved artifacts ──────────────────────────────────────────────
-    if all(os.path.exists(p) for p in ARTIFACTS):
-        with open("best_model.pkl", "rb") as f: model  = pickle.load(f)
-        with open("scaler.pkl",     "rb") as f: scaler = pickle.load(f)
-        with open("results.pkl",    "rb") as f: results = pickle.load(f)
-
-        # we still want feature names and dataset stats
-        if os.path.exists(DATASET):
-            df = _load_df()
-            feature_cols = [c for c in df.columns if c not in ("patientid","target")]
+    # ── try pre-saved artifacts (validate they match current dataset) ─────────
+    if all(os.path.exists(p) for p in ARTIFACTS) and os.path.exists(DATASET):
+        df_check    = _load_df()
+        feat_check  = [c for c in df_check.columns if c not in ("patientid", "target")]
+        with open("scaler.pkl", "rb") as f:
+            scaler_check = pickle.load(f)
+        if scaler_check.n_features_in_ == len(feat_check):
+            # artifacts match the current dataset — load them
+            with open("best_model.pkl", "rb") as f: model   = pickle.load(f)
+            with open("results.pkl",    "rb") as f: results = pickle.load(f)
+            return model, scaler_check, results, {}, feat_check, df_check
         else:
-            feature_cols = []
-
-        return model, scaler, results, {}, feature_cols, None
+            # stale artifacts from a different dataset — delete and retrain
+            for p in ARTIFACTS:
+                if os.path.exists(p):
+                    os.remove(p)
 
     # ── fresh training ───────────────────────────────────────────────────────
     if not os.path.exists(DATASET):
@@ -348,14 +350,24 @@ with tab_predict:
         predict_clicked = st.button("🔮 Predict Result", type="primary", use_container_width=True)
 
     if predict_clicked:
-        # build input array in the exact column order the scaler was trained on
-        input_values = [
-            age, gender_val, chestpain, restingBP, serumcholestrol,
-            fastingbloodsugar, restingrelectro, maxheartrate,
-            exerciseangia, oldpeak, slope, noofmajorvessels,
-        ]
-        user_array = np.array([input_values])
-        scaled     = scaler.transform(user_array)
+        # build input as a DataFrame so sklearn gets correct feature names —
+        # this prevents the n_features mismatch ValueError entirely
+        input_dict = {
+            "age":               [age],
+            "gender":            [gender_val],
+            "chestpain":         [chestpain],
+            "restingBP":         [restingBP],
+            "serumcholestrol":   [serumcholestrol],
+            "fastingbloodsugar": [fastingbloodsugar],
+            "restingrelectro":   [restingrelectro],
+            "maxheartrate":      [maxheartrate],
+            "exerciseangia":     [exerciseangia],
+            "oldpeak":           [oldpeak],
+            "slope":             [slope],
+            "noofmajorvessels":  [noofmajorvessels],
+        }
+        user_df    = pd.DataFrame(input_dict)[feature_cols]  # enforce trained column order
+        scaled     = scaler.transform(user_df)
         prediction = model.predict(scaled)[0]
         confidence = model.predict_proba(scaled)[0] if hasattr(model, "predict_proba") else None
 
