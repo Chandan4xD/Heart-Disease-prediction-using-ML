@@ -35,11 +35,10 @@ def initialize_system():
     
     if 'patientid' in df.columns:
         df.drop('patientid', axis=1, inplace=True)
-    if 'Classification' in df.columns and 'target' not in df.columns:
-        df.rename(columns={'Classification': 'target'}, inplace=True)
-        
-    X = df.drop('target', axis=1)
-    y = df['target']
+    target_col = df.columns[-1]
+    
+    X = df.drop(target_col, axis=1)
+    y = df[target_col]
     
     if X.shape[1] != 12:
         st.error(f"Schema Error: Expected 12 features, found {X.shape[1]}.")
