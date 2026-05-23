@@ -105,7 +105,7 @@ input_dict = {
 'slope': slope,
 'noofmajorvessels': noofmajorvessels
 }
-# Build array strictly in the order of the dataset features
+# Building array strictly in the order of the dataset features
 try:
 user_input = np.array([[input_dict[col] for col in feature_names]])
 scaled = scaler.transform(user_input)
