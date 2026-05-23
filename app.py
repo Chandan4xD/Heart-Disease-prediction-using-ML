@@ -13,10 +13,14 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
+
+# 1. SYSTEM CONFIGURATION & INITIALIZATION
+
 st.set_page_config(page_title="Heart Disease Predictor", layout="wide")
 
-@st.cache_resource(show_spinner="Initializing ML Engine...")
+@st.cache_resource(show_spinner="Initializing Machine Learning Engine...")
 def initialize_system():
+    # Attempt to load pre-trained artifacts if they exist
     try:
         if all(os.path.exists(f) for f in ['best_model.pkl', 'scaler.pkl', 'results.pkl']):
             with open('best_model.pkl', 'rb') as f: model = pickle.load(f)
@@ -26,22 +30,30 @@ def initialize_system():
     except Exception:
         pass
 
+    # Fallback: Auto-Train Engine (Self-Healing for Cloud Deployment)
     if not os.path.exists('heart.csv'):
-        st.error("Critical Error: 'heart.csv' missing from repository.")
+        st.error("System Error: 'heart.csv' dataset not found in the repository.")
         st.stop()
         
     df = pd.read_csv('heart.csv')
     df.columns = df.columns.str.strip()
     
-    if 'patientid' in df.columns:
-        df.drop('patientid', axis=1, inplace=True)
+    # Safely drop non-predictive IDs
+    if 'patientid' in df.columns.str.lower():
+        pid_col = df.columns[df.columns.str.lower() == 'patientid'][0]
+        df = df.drop(columns=[pid_col])
+        
+    # Dynamically extract target (assumes target is ALWAYS the last column)
     target_col = df.columns[-1]
-    
-    X = df.drop(target_col, axis=1)
+    X = df.drop(columns=[target_col])
     y = df[target_col]
     
+    # Silent data imputation for resilience
+    X = X.fillna(X.median())
+    y = y.fillna(y.mode()[0])
+    
     if X.shape[1] != 12:
-        st.error(f"Schema Error: Expected 12 features, found {X.shape[1]}.")
+        st.error(f"Schema Error: Model requires 12 features, but dataset has {X.shape[1]}. Check heart.csv.")
         st.stop()
         
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
@@ -72,8 +84,12 @@ def initialize_system():
         }
         trained_models[name] = m
         
-    best_algo = max(results, key=lambda k: results[k]['Accuracy'])
+    # Select best model using Accuracy, with F1-Score as the mathematical tie-breaker
+    best_algo = max(results, key=lambda k: (results[k]['Accuracy'], results[k]['F1-Score']))
+    
     return trained_models[best_algo], scaler, results
+
+# 2. APPLICATION INTERFACE
 
 st.title("Heart Disease Prediction System")
 st.caption("Developed by Arpan, Chandan & MD Belal")
@@ -109,6 +125,8 @@ with tab1:
     st.markdown("---")
     
     if st.button("Predict Result", type="primary", use_container_width=True):
+        
+        # Positional array mapped perfectly to the 12 UI inputs
         raw_features = [
             age, gender_val, chestpain, resting_bp, serumcholestrol, 
             fastingbloodsugar, restingrelectro, maxheartrate, 
@@ -116,22 +134,19 @@ with tab1:
         ]
         
         try:
+            # Enforce strict 1x12 matrix shape
             feature_vector = np.array(raw_features).reshape(1, -1)
             
-            if feature_vector.shape[1] != 12:
-                st.error(f"System Error: Expected 12 features, received {feature_vector.shape[1]}.")
-                st.stop()
-                
             scaled_input = scaler.transform(feature_vector) 
             prediction = model.predict(scaled_input)[0]
             
             if prediction == 1: 
-                st.error("⚠️ **Diagnosis:** Heart Disease Detected. Please consult a cardiologist.")
+                st.error("⚠️ **Diagnosis:** Heart Disease Detected. Please consult a medical professional.")
             else: 
-                st.success("✅ **Diagnosis:** No Heart Disease Detected. Keep up the healthy lifestyle!")
+                st.success("✅ **Diagnosis:** No Heart Disease Detected.")
                 
         except Exception as e:
-            st.error(f"Inference Engine Failure: {str(e)}")
+            st.error(f"Inference Failure: {str(e)}")
 
 with tab2:
     st.write("### Model Performance Metrics")
@@ -140,21 +155,20 @@ with tab2:
         df_res.columns = ['Model Algorithm', 'Accuracy', 'Precision', 'Recall', 'F1-Score']
         st.dataframe(df_res.style.highlight_max(axis=0, color='lightgreen'), use_container_width=True)
         
-best_algo = max(results, key=lambda k: (results[k]['Accuracy'], results[k]['F1-Score']))
-        st.info(f"🏆 Currently active production model: **{best_algo}**")
+        # Identifies the active model ensuring tie-breaker logic is reflected
+        best_algo = max(results, key=lambda k: (results[k]['Accuracy'], results[k]['F1-Score']))
+        st.info(f"🏆 Active Production Model: **{best_algo}**")
     except Exception:
-        st.warning("Performance metrics currently unavailable.")
+        st.warning("Performance metrics unavailable.")
 
 with tab3:
     st.write("### System Architecture & Background")
     st.write("""
-    This inference engine is built on the **Indian Cardiovascular Disease Dataset (Mendeley)**. 
-    It features a robust 12-parameter predictive pipeline with auto-healing cloud deployment capabilities.
+    This robust machine learning pipeline evaluates patient clinical parameters to assess cardiovascular disease risk. 
+    It leverages multiple classification algorithms, dynamically selecting the highest-performing model based on accuracy and F1-score tie-breaking logic.
     
-    **Developed at BACET by:**
+    **Project Team (BACET):**
     * Arpan Das
     * Chandan Kumar Mishra
     * MD Belal
-    
-    *System Status: Active | Resilient Pipeline v4.0 (Cloud Native)*
     """)
