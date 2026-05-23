@@ -4,17 +4,16 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-# Configure the Streamlit page
+# 1. System Configuration
 st.set_page_config(page_title="Heart Disease Predictor", layout="wide")
 
 @st.cache_resource(show_spinner=False)
 def load_artifacts():
-    """Loads pre-trained model artifacts defensively."""
+    """Defensively loads the machine learning artifacts."""
     required_files = ['best_model.pkl', 'scaler.pkl', 'results.pkl']
     
-    # Check if artifacts exist
     if not all(os.path.exists(f) for f in required_files):
-        st.error("⚠️ System Offline: Model artifacts not found. Please run the training pipeline first.")
+        st.error("⚠️ System Offline: Model artifacts not found. Please run 'python train_model.py' first.")
         st.stop()
         
     try:
@@ -26,20 +25,20 @@ def load_artifacts():
         st.error(f"⚠️ System Offline: Artifact corruption detected. Error: {e}")
         st.stop()
 
-# Initialize UI
+# 2. Application Header
 st.title("Heart Disease Prediction System")
-st.caption("Developed by Arpan, Chandan & MD Belal | Indian Cardiovascular Dataset")
+st.caption("Developed by Arpan, Chandan & MD Belal | Indian Cardiovascular Dataset (Mendeley)")
 
-# Load system artifacts
+# Load Engine
 model, scaler, results = load_artifacts()
 
-# Build Application Tabs
+# 3. User Interface Tabs
 tab1, tab2, tab3 = st.tabs(["Predict", "Performance", "About"])
 
 with tab1:
     st.write("### Input Clinical Parameters")
     
-    # UI Layout
+    # 3-Column Layout for Medical Inputs
     c1, c2, c3 = st.columns(3)
     
     with c1:
@@ -63,11 +62,10 @@ with tab1:
     
     st.markdown("---")
     
-    # Inference Trigger
+    # 4. Resilient Inference Engine
     if st.button("Predict Result", type="primary", use_container_width=True):
         
-        # 1. Positional Feature Mapping (Resilient against column name changes)
-        # Order MUST match the 12 clinical attributes in the training pipeline
+        # Define the exact 12 features in the strict order required by the scaler
         raw_features = [
             age, 
             gender_val, 
@@ -84,19 +82,19 @@ with tab1:
         ]
         
         try:
-            # 2. Vectorization
+            # Vectorize and enforce 2D shape to prevent the scalar ValueError
             feature_vector = np.array(raw_features).reshape(1, -1)
             
-            # 3. Shape Validation (Defensive Check)
+            # Defensive Shape Validation
             if feature_vector.shape[1] != 12:
                 st.error(f"System Error: Expected 12 input features, received {feature_vector.shape[1]}.")
                 st.stop()
                 
-            # 4. Scaling & Inference
+            # Execute Scaling & Prediction
             scaled_input = scaler.transform(feature_vector) 
             prediction = model.predict(scaled_input)[0]
             
-            # 5. Output Routing
+            # Route UI Output
             if prediction == 1: 
                 st.error("⚠️ **Diagnosis:** Heart Disease Detected. Please consult a cardiologist.")
             else: 
@@ -104,21 +102,20 @@ with tab1:
                 
         except Exception as e:
             st.error(f"Inference Engine Failure: {str(e)}")
-            st.info("Please verify the integrity of your scaler.pkl file.")
 
 with tab2:
     st.write("### Model Performance Metrics")
     try:
-        # Dynamically render the performance of all trained models
+        # Render dynamic performance metrics from results.pkl
         df_res = pd.DataFrame(results).T.reset_index()
         df_res.columns = ['Model Algorithm', 'Accuracy', 'Precision', 'Recall', 'F1-Score']
         st.dataframe(df_res.style.highlight_max(axis=0, color='lightgreen'), use_container_width=True)
         
-        # Identify the active model
+        # Display the active production model
         best_algo = max(results, key=lambda k: results[k]['Accuracy'])
-        st.caption(f"Currently active production model: **{best_algo}**")
+        st.info(f"🏆 Currently active production model: **{best_algo}**")
     except Exception as e:
-        st.warning("Performance metrics currently unavailable. Run the training pipeline to generate `results.pkl`.")
+        st.warning("Performance metrics unavailable. System error reading results.")
 
 with tab3:
     st.write("### System Architecture & Background")
