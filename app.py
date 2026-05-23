@@ -6,37 +6,33 @@ import streamlit as st
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
-# 1. System Configuration
 st.set_page_config(page_title="Heart Disease Predictor", layout="wide")
 
 @st.cache_resource(show_spinner="Initializing ML Engine...")
 def initialize_system():
-    """
-    Self-Healing Engine: 
-    Tries to load existing model artifacts. If missing (e.g., due to GitHub deployment),
-    it automatically trains a new model in memory on the fly.
-    """
-    # PATH A: Try to load existing local artifacts
     try:
-        if os.path.exists('best_model.pkl') and os.path.exists('scaler.pkl') and os.path.exists('results.pkl'):
+        if all(os.path.exists(f) for f in ['best_model.pkl', 'scaler.pkl', 'results.pkl']):
             with open('best_model.pkl', 'rb') as f: model = pickle.load(f)
             with open('scaler.pkl', 'rb') as f: scaler = pickle.load(f)
             with open('results.pkl', 'rb') as f: results = pickle.load(f)
             return model, scaler, results
     except Exception:
-        pass # If loading fails, proceed to Path B
+        pass
 
-    # PATH B: Auto-train model on the fly (Self-Healing)
     if not os.path.exists('heart.csv'):
-        st.error("⚠️ Critical Error: 'heart.csv' is missing from your repository. Please upload your dataset.")
+        st.error("Critical Error: 'heart.csv' missing from repository.")
         st.stop()
         
-    # Load and clean data
     df = pd.read_csv('heart.csv')
     df.columns = df.columns.str.strip()
+    
     if 'patientid' in df.columns:
         df.drop('patientid', axis=1, inplace=True)
     if 'Classification' in df.columns and 'target' not in df.columns:
@@ -45,43 +41,46 @@ def initialize_system():
     X = df.drop('target', axis=1)
     y = df['target']
     
-    # Ensure exactly 12 features exist
     if X.shape[1] != 12:
-        st.error(f"Dataset Schema Error: Expected 12 features, found {X.shape[1]}.")
+        st.error(f"Schema Error: Expected 12 features, found {X.shape[1]}.")
         st.stop()
         
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     
-    # Scale data
     scaler = StandardScaler()
     X_train_s = scaler.fit_transform(X_train)
     X_test_s = scaler.transform(X_test)
     
-    # Train robust default model (Random Forest)
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
-    model.fit(X_train_s, y_train)
-    preds = model.predict(X_test_s)
+    models = {
+        'Decision Tree': DecisionTreeClassifier(random_state=42),
+        'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42),
+        'SVM': SVC(kernel='rbf', probability=True, random_state=42),
+        'KNN': KNeighborsClassifier(n_neighbors=5),
+        'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42)
+    }
     
-    # Generate dynamic performance metrics
-    results = {
-        'Random Forest (Cloud-Trained)': {
+    results = {}
+    trained_models = {}
+    
+    for name, m in models.items():
+        m.fit(X_train_s, y_train)
+        preds = m.predict(X_test_s)
+        results[name] = {
             'Accuracy': round(accuracy_score(y_test, preds) * 100, 2),
             'Precision': round(precision_score(y_test, preds) * 100, 2),
             'Recall': round(recall_score(y_test, preds) * 100, 2),
             'F1-Score': round(f1_score(y_test, preds) * 100, 2)
         }
-    }
-    
-    return model, scaler, results
+        trained_models[name] = m
+        
+    best_algo = max(results, key=lambda k: results[k]['Accuracy'])
+    return trained_models[best_algo], scaler, results
 
-# 2. Application Header
 st.title("Heart Disease Prediction System")
 st.caption("Developed by Arpan, Chandan & MD Belal | Indian Cardiovascular Dataset")
 
-# Load or Auto-Train Engine
 model, scaler, results = initialize_system()
 
-# 3. User Interface Tabs
 tab1, tab2, tab3 = st.tabs(["Predict", "Performance", "About"])
 
 with tab1:
@@ -110,10 +109,7 @@ with tab1:
     
     st.markdown("---")
     
-    # 4. Resilient Inference Engine
     if st.button("Predict Result", type="primary", use_container_width=True):
-        
-        # Exact 12-feature mapping array
         raw_features = [
             age, gender_val, chestpain, resting_bp, serumcholestrol, 
             fastingbloodsugar, restingrelectro, maxheartrate, 
@@ -121,7 +117,6 @@ with tab1:
         ]
         
         try:
-            # Enforce 2D array structure to prevent scalar crashes
             feature_vector = np.array(raw_features).reshape(1, -1)
             
             if feature_vector.shape[1] != 12:
@@ -162,5 +157,5 @@ with tab3:
     * Chandan Kumar Mishra
     * MD Belal
     
-    *System Status: Active | Resilient Pipeline v3.0 (Cloud Native)*
+    *System Status: Active | Resilient Pipeline v4.0 (Cloud Native)*
     """)
