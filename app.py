@@ -4,33 +4,82 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
 # 1. System Configuration
 st.set_page_config(page_title="Heart Disease Predictor", layout="wide")
 
-@st.cache_resource(show_spinner=False)
-def load_artifacts():
-    """Defensively loads the machine learning artifacts."""
-    required_files = ['best_model.pkl', 'scaler.pkl', 'results.pkl']
-    
-    if not all(os.path.exists(f) for f in required_files):
-        st.error("⚠️ System Offline: Model artifacts not found. Please run 'python train_model.py' first.")
+@st.cache_resource(show_spinner="Initializing ML Engine...")
+def initialize_system():
+    """
+    Self-Healing Engine: 
+    Tries to load existing model artifacts. If missing (e.g., due to GitHub deployment),
+    it automatically trains a new model in memory on the fly.
+    """
+    # PATH A: Try to load existing local artifacts
+    try:
+        if os.path.exists('best_model.pkl') and os.path.exists('scaler.pkl') and os.path.exists('results.pkl'):
+            with open('best_model.pkl', 'rb') as f: model = pickle.load(f)
+            with open('scaler.pkl', 'rb') as f: scaler = pickle.load(f)
+            with open('results.pkl', 'rb') as f: results = pickle.load(f)
+            return model, scaler, results
+    except Exception:
+        pass # If loading fails, proceed to Path B
+
+    # PATH B: Auto-train model on the fly (Self-Healing)
+    if not os.path.exists('heart.csv'):
+        st.error("⚠️ Critical Error: 'heart.csv' is missing from your repository. Please upload your dataset.")
         st.stop()
         
-    try:
-        with open('best_model.pkl', 'rb') as f: model = pickle.load(f)
-        with open('scaler.pkl', 'rb') as f: scaler = pickle.load(f)
-        with open('results.pkl', 'rb') as f: results = pickle.load(f)
-        return model, scaler, results
-    except Exception as e:
-        st.error(f"⚠️ System Offline: Artifact corruption detected. Error: {e}")
+    # Load and clean data
+    df = pd.read_csv('heart.csv')
+    df.columns = df.columns.str.strip()
+    if 'patientid' in df.columns:
+        df.drop('patientid', axis=1, inplace=True)
+    if 'Classification' in df.columns and 'target' not in df.columns:
+        df.rename(columns={'Classification': 'target'}, inplace=True)
+        
+    X = df.drop('target', axis=1)
+    y = df['target']
+    
+    # Ensure exactly 12 features exist
+    if X.shape[1] != 12:
+        st.error(f"Dataset Schema Error: Expected 12 features, found {X.shape[1]}.")
         st.stop()
+        
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    
+    # Scale data
+    scaler = StandardScaler()
+    X_train_s = scaler.fit_transform(X_train)
+    X_test_s = scaler.transform(X_test)
+    
+    # Train robust default model (Random Forest)
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X_train_s, y_train)
+    preds = model.predict(X_test_s)
+    
+    # Generate dynamic performance metrics
+    results = {
+        'Random Forest (Cloud-Trained)': {
+            'Accuracy': round(accuracy_score(y_test, preds) * 100, 2),
+            'Precision': round(precision_score(y_test, preds) * 100, 2),
+            'Recall': round(recall_score(y_test, preds) * 100, 2),
+            'F1-Score': round(f1_score(y_test, preds) * 100, 2)
+        }
+    }
+    
+    return model, scaler, results
 
 # 2. Application Header
 st.title("Heart Disease Prediction System")
-st.caption("Developed by Arpan, Chandan & MD Belal | Indian Cardiovascular Dataset (Mendeley)")
+st.caption("Developed by Arpan, Chandan & MD Belal | Indian Cardiovascular Dataset")
 
-# Load Engine
-model, scaler, results = load_artifacts()
+# Load or Auto-Train Engine
+model, scaler, results = initialize_system()
 
 # 3. User Interface Tabs
 tab1, tab2, tab3 = st.tabs(["Predict", "Performance", "About"])
@@ -38,7 +87,6 @@ tab1, tab2, tab3 = st.tabs(["Predict", "Performance", "About"])
 with tab1:
     st.write("### Input Clinical Parameters")
     
-    # 3-Column Layout for Medical Inputs
     c1, c2, c3 = st.columns(3)
     
     with c1:
@@ -65,36 +113,24 @@ with tab1:
     # 4. Resilient Inference Engine
     if st.button("Predict Result", type="primary", use_container_width=True):
         
-        # Define the exact 12 features in the strict order required by the scaler
+        # Exact 12-feature mapping array
         raw_features = [
-            age, 
-            gender_val, 
-            chestpain, 
-            resting_bp, 
-            serumcholestrol, 
-            fastingbloodsugar, 
-            restingrelectro, 
-            maxheartrate, 
-            exerciseangia, 
-            oldpeak, 
-            slope, 
-            noofmajorvessels
+            age, gender_val, chestpain, resting_bp, serumcholestrol, 
+            fastingbloodsugar, restingrelectro, maxheartrate, 
+            exerciseangia, oldpeak, slope, noofmajorvessels
         ]
         
         try:
-            # Vectorize and enforce 2D shape to prevent the scalar ValueError
+            # Enforce 2D array structure to prevent scalar crashes
             feature_vector = np.array(raw_features).reshape(1, -1)
             
-            # Defensive Shape Validation
             if feature_vector.shape[1] != 12:
-                st.error(f"System Error: Expected 12 input features, received {feature_vector.shape[1]}.")
+                st.error(f"System Error: Expected 12 features, received {feature_vector.shape[1]}.")
                 st.stop()
                 
-            # Execute Scaling & Prediction
             scaled_input = scaler.transform(feature_vector) 
             prediction = model.predict(scaled_input)[0]
             
-            # Route UI Output
             if prediction == 1: 
                 st.error("⚠️ **Diagnosis:** Heart Disease Detected. Please consult a cardiologist.")
             else: 
@@ -106,28 +142,25 @@ with tab1:
 with tab2:
     st.write("### Model Performance Metrics")
     try:
-        # Render dynamic performance metrics from results.pkl
         df_res = pd.DataFrame(results).T.reset_index()
         df_res.columns = ['Model Algorithm', 'Accuracy', 'Precision', 'Recall', 'F1-Score']
         st.dataframe(df_res.style.highlight_max(axis=0, color='lightgreen'), use_container_width=True)
         
-        # Display the active production model
         best_algo = max(results, key=lambda k: results[k]['Accuracy'])
         st.info(f"🏆 Currently active production model: **{best_algo}**")
-    except Exception as e:
-        st.warning("Performance metrics unavailable. System error reading results.")
+    except Exception:
+        st.warning("Performance metrics currently unavailable.")
 
 with tab3:
     st.write("### System Architecture & Background")
     st.write("""
     This inference engine is built on the **Indian Cardiovascular Disease Dataset (Mendeley)**. 
-    It features a robust 12-parameter predictive pipeline designed to localize diagnosis logic 
-    for South Asian demographics.
+    It features a robust 12-parameter predictive pipeline with auto-healing cloud deployment capabilities.
     
     **Developed at BACET by:**
     * Arpan Das
     * Chandan Kumar Mishra
     * MD Belal
     
-    *System Status: Active | Resilient Pipeline v2.0*
+    *System Status: Active | Resilient Pipeline v3.0 (Cloud Native)*
     """)
