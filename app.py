@@ -73,7 +73,7 @@ def initialize_system():
         trained_models[name] = m
 
     priority = {'Random Forest': 5, 'Logistic Regression': 4, 'SVM': 3, 'Decision Tree': 2, 'KNN': 1}
-    best_algo = max(results, key=lambda k: (results[k]['Accuracy'], results[k]['F1-Score'], priority[k]))
+ best_algo = max(results, key=lambda k: (float(results[k]['Accuracy']), float(results[k]['F1-Score']), priority[k]))
 
     return trained_models[best_algo], scaler, results
 
@@ -138,7 +138,7 @@ with tab2:
         st.dataframe(df_res.style.highlight_max(axis=0, color='lightgreen'), use_container_width=True)
 
         priority = {'Random Forest': 5, 'Logistic Regression': 4, 'SVM': 3, 'Decision Tree': 2, 'KNN': 1}
-        best_algo = max(results, key=lambda k: (results[k]['Accuracy'], results[k]['F1-Score'], priority[k]))
+      best_algo = max(results, key=lambda k: (float(results[k]['Accuracy']), float(results[k]['F1-Score']), priority[k]))
         st.info(f"🏆 Active Production Model: **{best_algo}**")
     except Exception:
         st.warning("Performance metrics unavailable.")
