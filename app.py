@@ -95,7 +95,7 @@ st.markdown("""
 #  is fast after the first run.  If they're missing we train fresh.
 # ═════════════════════════════════════════════════════════════════════════════
 
-DATASET = "Cardiovascular_Disease_Dataset.csv"  # put in same folder as app.py
+DATASET = "heart.csv"  # Cardiovascular Disease Dataset (Indian Population)
 ARTIFACTS = ["best_model.pkl", "scaler.pkl", "results.pkl"]
 
 @st.cache_resource(show_spinner="Preparing models — please wait...")
