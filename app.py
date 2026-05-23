@@ -26,7 +26,6 @@ with open('results.pkl', 'rb') as f: results = pickle.load(f)
 with open('feature_names.pkl', 'rb') as f: feature_names = pickle.load(f)
 return model, scaler, results, feature_names
 if not os.path.exists('heart.csv'):
-st.error("?? Error: 'heart.csv' not found. Please ensure the Indian Cardiovascular dataset
 is in the directory.")
 st.stop()
 df = pd.read_csv('heart.csv')
