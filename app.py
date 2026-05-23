@@ -141,7 +141,7 @@ with tab2:
         df_res.columns = ['Model Algorithm', 'Accuracy', 'Precision', 'Recall', 'F1-Score']
         st.dataframe(df_res.style.highlight_max(axis=0, color='lightgreen'), use_container_width=True)
         
-        best_algo = max(results, key=lambda k: results[k]['Accuracy'])
+best_algo = max(results, key=lambda k: (results[k]['Accuracy'], results[k]['F1-Score']))
         st.info(f"🏆 Currently active production model: **{best_algo}**")
     except Exception:
         st.warning("Performance metrics currently unavailable.")
