@@ -29,11 +29,12 @@ def get_models():
         return model, scaler, results, feature_names
 
     if not os.path.exists('heart.csv'):
-        st.error("⚠️ Error: 'heart.csv' not found. Please ensure the Indian Cardiovascular dataset is in the directory.")
+        st.error("⚠️ Error: 'heart.csv' not found.")
         st.stop()
 
     df = pd.read_csv('heart.csv')
-    df.columns = df.columns.str.strip()
+    df.columns = df.columns.str.strip().str.replace('\ufeff', '')
+    
     if 'patientid' in df.columns:
         df.drop('patientid', axis=1, inplace=True)
     if 'Classification' in df.columns and 'target' not in df.columns:
