@@ -19,13 +19,13 @@ import pandas as pd
 import seaborn as sns
 import streamlit as st
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score, auc, confusion_matrix,
     f1_score, precision_score, recall_score, roc_curve,
 )
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.naive_bayes import GaussianNB
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
@@ -136,11 +136,11 @@ def load_everything():
     X_test_sc  = scaler.transform(X_test)
 
     model_zoo = {
-        "Logistic Regression": LogisticRegression(max_iter=2000, random_state=42),
-        "Random Forest":       RandomForestClassifier(n_estimators=150, random_state=42),
-        "SVM":                 SVC(kernel="rbf", probability=True, random_state=42),
-        "KNN":                 KNeighborsClassifier(n_neighbors=7),
-        "Decision Tree":       DecisionTreeClassifier(max_depth=6, random_state=42),
+        "Random Forest": RandomForestClassifier(n_estimators=200, max_depth=10, min_samples_split=4, random_state=42),
+        "SVM":           SVC(kernel="rbf", C=2.0, probability=True, random_state=42),
+        "KNN":           KNeighborsClassifier(n_neighbors=7),
+        "Decision Tree": DecisionTreeClassifier(max_depth=6, random_state=42),
+        "Naive Bayes":   GaussianNB(),
     }
 
     results        = {}
