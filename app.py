@@ -106,7 +106,7 @@ with tab1:
             'age': age,
             'gender': gender_val,
             'chestpain': chestpain,
-            'resting BP': resting_bp,
+            'restingBP': resting_bp,
             'serumcholestrol': serumcholestrol,
             'fastingbloodsugar': fastingbloodsugar,
             'restingrelectro': restingrelectro,
