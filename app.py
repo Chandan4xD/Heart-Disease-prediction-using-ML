@@ -90,7 +90,7 @@ exerciseangia = st.radio("Exercise Angina (exerciseangia)", [0, 1], horizontal=T
 oldpeak = st.number_input("ST Depression (oldpeak)", 0.0, 6.2, 1.0)
 noofmajorvessels = st.selectbox("Major Vessels (noofmajorvessels)", [0, 1, 2, 3])
 if st.button("Predict Result", type="primary"):
-# Map values robustly against feature names extracted from the dataset
+# Mapping values robustly against feature names extracted from the dataset
 input_dict = {
 'age': age,
 'gender': gender_val,
