@@ -134,8 +134,29 @@ with tab2:
     st.dataframe(df_res, use_container_width=True)
 
 with tab3:
-    st.write("""
-    This codebase was updated to support the Indian Cardiovascular Disease Dataset (Mendeley).
-    Features match the 12 clinical attributes exactly (Thalassemia is excluded).
-    Developed at BACET by Arpan Das, Chandan Kumar Mishra, and MD Belal.
+    st.markdown("### 🧬 Project Overview")
+    st.info(
+        "This application is a **Clinical Decision Support System (CDSS)** powered by Machine Learning. "
+        "It is designed to evaluate the likelihood of cardiovascular disease based on standard non-invasive clinical metrics."
+    )
+    
+    st.markdown("### 📊 Dataset & Architecture")
+    st.markdown("""
+    * **Data Source:** Indian Cardiovascular Disease Dataset (Mendeley Data).
+    * **Feature Engineering:** 12 curated clinical attributes localized for accurate demographic prediction.
+    * **Inference Engine:** An automated pipeline evaluating multiple classification algorithms (Random Forest, Decision Tree, Naive Bayes, KNN, Logistic Regression) to deploy the optimal predictive model.
     """)
+    
+    st.markdown("### 👨‍💻 Development Team")
+    st.markdown("""
+    Engineered at **B.A. College of Engineering and Technology (BACET)** by:
+    * **Arpan Das**
+    * **Chandan Kumar Mishra**
+    * **MD Belal**
+    """)
+    
+    st.markdown("---")
+    st.warning(
+        "**Clinical Disclaimer:** This software is developed for academic and research purposes. "
+        "It is not a substitute for professional medical advice, diagnosis, or treatment."
+    )
