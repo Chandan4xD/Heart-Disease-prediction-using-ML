@@ -1,162 +1,141 @@
 import os
+import pickle
 import warnings
-import numpy as np
 import pandas as pd
-import matplotlib
-matplotlib.use("Agg")
+import numpy as np
 import matplotlib.pyplot as plt
 import streamlit as st
+
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import SVC
-from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import GaussianNB
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
-warnings.filterwarnings("ignore")
+warnings.filterwarnings('ignore')
 
 st.set_page_config(page_title="Heart Disease Predictor", layout="wide")
 
-@st.cache_resource
-def train_models():
-    df = pd.read_csv("heart.csv")
-    df.drop(columns=["patientid"], inplace=True, errors="ignore")
+@st.cache_resource(show_spinner=False)
+def get_models():
+    if all(os.path.exists(f) for f in ['best_model.pkl', 'scaler.pkl', 'results.pkl', 'feature_names.pkl']):
+        with open('best_model.pkl', 'rb') as f: model = pickle.load(f)
+        with open('scaler.pkl', 'rb') as f: scaler = pickle.load(f)
+        with open('results.pkl', 'rb') as f: results = pickle.load(f)
+        with open('feature_names.pkl', 'rb') as f: feature_names = pickle.load(f)
+        return model, scaler, results, feature_names
 
-    X = df.drop("target", axis=1)
-    y = df["target"]
+    if not os.path.exists('heart.csv'):
+        st.error("⚠️ Error: 'heart.csv' not found.")
+        st.stop()
 
+    df = pd.read_csv('heart.csv')
+    df.columns = df.columns.str.strip().str.replace('\ufeff', '')
+    
+    if 'patientid' in df.columns:
+        df.drop('patientid', axis=1, inplace=True)
+    if 'Classification' in df.columns and 'target' not in df.columns:
+        df.rename(columns={'Classification': 'target'}, inplace=True)
+    
+    X, y = df.drop('target', axis=1), df['target']
+    feature_names = X.columns.tolist()
+    
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
+    
     scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
-
+    X_train_s = scaler.fit_transform(X_train)
+    X_test_s = scaler.transform(X_test)
+    
     models = {
-        "Random Forest": RandomForestClassifier(n_estimators=200, max_depth=10, min_samples_split=4, random_state=42),
-        "SVM": SVC(kernel="rbf", C=2.0, probability=True, random_state=42),
-        "KNN": KNeighborsClassifier(n_neighbors=7),
-        "Decision Tree": DecisionTreeClassifier(max_depth=6, random_state=42),
-        "Naive Bayes": GaussianNB()
+        'Decision Tree': DecisionTreeClassifier(random_state=42),
+        'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42),
+        'Naive Bayes': GaussianNB(),
+        'KNN': KNeighborsClassifier(n_neighbors=5),
+        'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42)
     }
 
     results = {}
-    trained = {}
-
-    for name, model in models.items():
-        model.fit(X_train, y_train)
-        preds = model.predict(X_test)
+    trained_models = {}
+    for name, clf in models.items():
+        clf.fit(X_train_s, y_train)
+        preds = clf.predict(X_test_s)
         results[name] = {
-            "Accuracy": round(accuracy_score(y_test, preds) * 100, 2),
-            "Precision": round(precision_score(y_test, preds) * 100, 2),
-            "Recall": round(recall_score(y_test, preds) * 100, 2),
-            "F1-Score": round(f1_score(y_test, preds) * 100, 2)
+            'Accuracy': round(accuracy_score(y_test, preds) * 100, 2),
+            'Precision': round(precision_score(y_test, preds) * 100, 2),
+            'Recall': round(recall_score(y_test, preds) * 100, 2),
+            'F1-Score': round(f1_score(y_test, preds) * 100, 2),
         }
-        trained[name] = model
+        trained_models[name] = clf
 
-    best = max(results, key=lambda k: results[k]["Accuracy"])
-    return trained[best], scaler, results, best, X_test, y_test
-
-
-model, scaler, results, best_model_name, X_test, y_test = train_models()
+    best_name = max(results, key=lambda k: results[k]['Accuracy'])
+    return trained_models[best_name], scaler, results, feature_names
 
 st.title("Heart Disease Prediction System")
-st.caption("Dept. of CSE | BACET | Final Year Project")
-st.caption("Developed by Arpan Das, Chandan Kumar Mishra & MD Belal")
+st.caption("Developed by Arpan, Chandan & MD Belal | Indian Cardiovascular Dataset")
 
-st.markdown("---")
+model, scaler, results, feature_names = get_models()
+best_algo = max(results, key=lambda k: results[k]['Accuracy'])
 
-tab1, tab2 = st.tabs(["Predict", "Model Performance"])
+tab1, tab2, tab3 = st.tabs(["Predict", "Performance", "About"])
 
 with tab1:
-    st.subheader("Enter Patient Details")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        age = st.slider("Age", 20, 80, 45)
-        gender = st.radio("Gender", ["Female", "Male"], index=1, horizontal=True)
-        gender_val = 1 if gender == "Male" else 0
-        chestpain = st.selectbox("Chest Pain Type", [0, 1, 2, 3])
-        restingrelectro = st.selectbox("Resting ECG", [0, 1, 2])
-
-    with col2:
-        restingBP = st.number_input("Resting Blood Pressure", 90, 200, 140)
-        serumcholestrol = st.number_input("Serum Cholesterol", 0, 610, 250)
-        fastingbloodsugar = st.radio("Fasting Blood Sugar > 120", [0, 1], horizontal=True)
-        maxheartrate = st.number_input("Max Heart Rate", 60, 220, 150)
-
-    with col3:
-        exerciseangia = st.radio("Exercise Induced Angina", [0, 1], horizontal=True)
-        oldpeak = st.number_input("ST Depression (oldpeak)", 0.0, 6.5, 2.0, step=0.1)
-        slope = st.selectbox("ST Slope", [0, 1, 2, 3])
-        noofmajorvessels = st.selectbox("Major Vessels Coloured", [0, 1, 2, 3])
-
-    st.markdown("")
-
-    if st.button("Predict", type="primary"):
-        input_data = pd.DataFrame([{
-            "age": age,
-            "gender": gender_val,
-            "chestpain": chestpain,
-            "restingBP": restingBP,
-            "serumcholestrol": serumcholestrol,
-            "fastingbloodsugar": fastingbloodsugar,
-            "restingrelectro": restingrelectro,
-            "maxheartrate": maxheartrate,
-            "exerciseangia": exerciseangia,
-            "oldpeak": oldpeak,
-            "slope": slope,
-            "noofmajorvessels": noofmajorvessels
-        }])
-
-        scaled_input = scaler.transform(input_data)
-        prediction = model.predict(scaled_input)[0]
-        probability = model.predict_proba(scaled_input)[0]
-
-        st.markdown("---")
-        if prediction == 1:
-            st.error(f"Heart Disease Detected — Confidence: {probability[1]*100:.1f}%")
-        else:
-            st.success(f"No Heart Disease Detected — Confidence: {probability[0]*100:.1f}%")
-
-        st.caption(f"Predicted using {best_model_name} | Accuracy: {results[best_model_name]['Accuracy']}%")
-        st.warning("Note: This is a research tool, not a medical diagnosis. Consult a doctor.")
+    st.write("### Input Clinical Parameters")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        age = st.slider("Age", 20, 80, 50)
+        gender = st.radio("Gender", ["Female (0)", "Male (1)"], index=1, horizontal=True)
+        gender_val = 1 if "Male" in gender else 0
+        chestpain = st.selectbox("Chest Pain Type (chestpain)", [0, 1, 2, 3])
+        restingrelectro = st.selectbox("Resting ECG (restingrelectro)", [0, 1, 2])
+    with c2:
+        resting_bp = st.number_input("Resting BP (resting BP)", 90, 200, 120)
+        serumcholestrol = st.number_input("Serum Cholesterol (serumcholestrol)", 120, 600, 200)
+        fastingbloodsugar = st.radio("Fasting Blood Sugar > 120 (fastingbloodsugar)", [0, 1], horizontal=True)
+        slope = st.selectbox("ST Slope (slope)", [1, 2, 3])
+    with c3:
+        maxheartrate = st.number_input("Max Heart Rate (maxheartrate)", 70, 210, 150)
+        exerciseangia = st.radio("Exercise Angina (exerciseangia)", [0, 1], horizontal=True)
+        oldpeak = st.number_input("ST Depression (oldpeak)", 0.0, 6.2, 1.0)
+        noofmajorvessels = st.selectbox("Major Vessels (noofmajorvessels)", [0, 1, 2, 3])
+    
+    if st.button("Predict Result", type="primary"):
+        input_dict = {
+            'age': age,
+            'gender': gender_val,
+            'chestpain': chestpain,
+            'restingBP': resting_bp,
+            'serumcholestrol': serumcholestrol,
+            'fastingbloodsugar': fastingbloodsugar,
+            'restingrelectro': restingrelectro,
+            'maxheartrate': maxheartrate,
+            'exerciseangia': exerciseangia,
+            'oldpeak': oldpeak,
+            'slope': slope,
+            'noofmajorvessels': noofmajorvessels
+        }
+        
+        try:
+            user_input = np.array([[input_dict[col] for col in feature_names]])
+            scaled = scaler.transform(user_input) 
+            pred = model.predict(scaled)[0]
+            
+            if pred == 1: st.error("⚠️ Heart Disease Detected")
+            else: st.success("✅ No Heart Disease Detected")
+        except KeyError as e:
+            st.error(f"Dataset column mismatch. Could not find column: {e}. Please ensure you are using the correct Mendeley dataset.")
 
 with tab2:
-    st.subheader("Model Comparison")
+    st.write("### Model Performance Metrics")
+    df_res = pd.DataFrame(results).T.reset_index()
+    df_res.columns = ['Model', 'Accuracy', 'Precision', 'Recall', 'F1-Score']
+    st.dataframe(df_res, use_container_width=True)
 
-    df_results = pd.DataFrame(results).T.reset_index()
-    df_results.columns = ["Model", "Accuracy", "Precision", "Recall", "F1-Score"]
-    st.dataframe(df_results, use_container_width=True, hide_index=True)
-
-    st.markdown(f"**Best Model: {best_model_name}** with {results[best_model_name]['Accuracy']}% accuracy")
-
-    st.subheader("Accuracy Comparison")
-    fig, ax = plt.subplots(figsize=(8, 4))
-    colors = ["green" if m == best_model_name else "steelblue" for m in df_results["Model"]]
-    ax.barh(df_results["Model"], df_results["Accuracy"], color=colors, edgecolor="white")
-    ax.set_xlabel("Accuracy (%)")
-    ax.set_xlim(0, 110)
-    for i, val in enumerate(df_results["Accuracy"]):
-        ax.text(val + 0.5, i, f"{val}%", va="center")
-    ax.spines[["top", "right"]].set_visible(False)
-    fig.tight_layout()
-    st.pyplot(fig, use_container_width=True)
-
-    st.subheader(f"Confusion Matrix — {best_model_name}")
-    preds = model.predict(X_test)
-    cm = confusion_matrix(y_test, preds)
-
-    fig2, ax2 = plt.subplots(figsize=(4, 3))
-    im = ax2.imshow(cm, cmap="Blues")
-    ax2.set_xticks([0, 1]); ax2.set_yticks([0, 1])
-    ax2.set_xticklabels(["Predicted Healthy", "Predicted Disease"])
-    ax2.set_yticklabels(["Actual Healthy", "Actual Disease"])
-    for i in range(2):
-        for j in range(2):
-            ax2.text(j, i, str(cm[i][j]), ha="center", va="center", fontsize=14, fontweight="bold",
-                     color="white" if cm[i][j] > cm.max() / 2 else "black")
-    fig2.tight_layout()
-    st.pyplot(fig2)
+with tab3:
+    st.write("""
+    This codebase was updated to support the Indian Cardiovascular Disease Dataset (Mendeley).
+    Features match the 12 clinical attributes exactly (Thalassemia is excluded).
+    Developed at BACET by Arpan Das, Chandan Kumar Mishra, and MD Belal.
+    """)
