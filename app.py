@@ -12,7 +12,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.linear_model import LinearRegression
+from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 warnings.filterwarnings('ignore')
@@ -51,7 +51,7 @@ def get_models():
     
     models = {
         'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42),
-        'Linear Regression': LinearRegression(),
+        'SVM': SVC(kernel='rbf', probability=True, random_state=42),
         'Decision Tree': DecisionTreeClassifier(random_state=42),
         'KNN': KNeighborsClassifier(n_neighbors=5),
         'Naive Bayes': GaussianNB()
@@ -62,9 +62,6 @@ def get_models():
     for name, clf in models.items():
         clf.fit(X_train_s, y_train)
         preds = clf.predict(X_test_s)
-        
-        if name == 'Linear Regression':
-            preds = np.where(preds >= 0.5, 1, 0)
             
         results[name] = {
             'Accuracy': round(accuracy_score(y_test, preds) * 100, 2),
@@ -125,9 +122,6 @@ with tab1:
             user_input = np.array([[input_dict[col] for col in feature_names]])
             scaled = scaler.transform(user_input) 
             pred = model.predict(scaled)[0]
-            
-            if type(model).__name__ == 'LinearRegression':
-                pred = 1 if pred >= 0.5 else 0
                 
             if pred == 1: st.error("⚠️ Heart Disease Detected")
             else: st.success("✅ No Heart Disease Detected")
@@ -152,7 +146,7 @@ with tab3:
     st.markdown("""
     * **Data Source:** Indian Cardiovascular Disease Dataset (Mendeley Data).
     * **Feature Engineering:** 12 curated clinical attributes localized for accurate demographic prediction.
-    * **Inference Engine:** An automated pipeline evaluating multiple classification algorithms (Random Forest, Linear Regression, Decision Tree, KNN, Naive Bayes) to deploy the optimal predictive model.
+    * **Inference Engine:** An automated pipeline evaluating multiple classification algorithms (Random Forest, SVM, Decision Tree, KNN, Naive Bayes) to deploy the optimal predictive model.
     """)
     
     st.markdown("### 👨‍💻 Development Team")
