@@ -50,11 +50,11 @@ def get_models():
     X_test_s = scaler.transform(X_test)
     
     models = {
-        'Decision Tree': DecisionTreeClassifier(random_state=42),
         'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42),
-        'Naive Bayes': GaussianNB(),
+        'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42),
+        'Decision Tree': DecisionTreeClassifier(random_state=42),
         'KNN': KNeighborsClassifier(n_neighbors=5),
-        'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42)
+        'Naive Bayes': GaussianNB()
     }
 
     results = {}
@@ -74,7 +74,7 @@ def get_models():
     return trained_models[best_name], scaler, results, feature_names
 
 st.title("Heart Disease Prediction System")
-st.caption("Developed by Arpan, Chandan & MD Belal | Indian Cardiovascular Dataset")
+st.caption("Developed by Arpan, Chandan & MD Belal")
 
 model, scaler, results, feature_names = get_models()
 best_algo = max(results, key=lambda k: results[k]['Accuracy'])
@@ -131,6 +131,7 @@ with tab2:
     st.write("### Model Performance Metrics")
     df_res = pd.DataFrame(results).T.reset_index()
     df_res.columns = ['Model', 'Accuracy', 'Precision', 'Recall', 'F1-Score']
+    df_res = df_res.sort_values(by=['Accuracy', 'F1-Score'], ascending=[False, False]).reset_index(drop=True)
     st.dataframe(df_res, use_container_width=True)
 
 with tab3:
@@ -144,7 +145,7 @@ with tab3:
     st.markdown("""
     * **Data Source:** Indian Cardiovascular Disease Dataset (Mendeley Data).
     * **Feature Engineering:** 12 curated clinical attributes localized for accurate demographic prediction.
-    * **Inference Engine:** An automated pipeline evaluating multiple classification algorithms (Random Forest, Decision Tree, Naive Bayes, KNN, Logistic Regression) to deploy the optimal predictive model.
+    * **Inference Engine:** An automated pipeline evaluating multiple classification algorithms (Random Forest, Logistic Regression, Decision Tree, KNN, Naive Bayes) to deploy the optimal predictive model.
     """)
     
     st.markdown("### 👨‍💻 Development Team")
