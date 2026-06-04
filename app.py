@@ -53,8 +53,13 @@ def load_and_train():
     model.fit(X_train_scaled, y_train)
     preds = model.predict(X_test_scaled)
     accuracy = f"{accuracy_score(y_test, preds) * 100:.2f}%"
+    
+    perf = {
+        'Random Forest': {'Accuracy': accuracy}
+    }
+    importance = dict(zip(feature_names, model.feature_importances_))
 
-    return model, scaler, feature_names, accuracy
+    return model, scaler, feature_names, accuracy, perf, importance
 
 def get_medical_indices(m):
     if not m:
@@ -119,7 +124,7 @@ def run_groq(chat_history, system_prompt):
     except Exception as e:
         return f"Error: {str(e)}"
 
-model, scaler, feature_names, accuracy = load_and_train()
+model, scaler, feature_names, accuracy, performance_matrix, feature_importances = load_and_train()
 
 st.title("Cardiovascular Clinical Decision Support System")
 st.caption("Developed by Arpan Das, Chandan Kumar Mishra & MD Belal")
@@ -200,7 +205,7 @@ if run_diagnostic or 'patient_state' in st.session_state:
         with c2:
             st.metric(label="Rate Pressure Product (Workload)", value=f"{indices['rpp']} mmHg·bpm")
         with c3:
-            st.metric(label="Model System Accuracy", value=accuracy)
+            st.metric(label="Selected Algorithm Node", value="Random Forest")
 
         if state['probability'] > 0.5:
             st.error(f"🚨 **High Risk Alert:** System classification output is {state['prediction']}.")
