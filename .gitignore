@@ -1,3 +1,19 @@
+# Security & API Keys
 .env
+.streamlit/secrets.toml
+
+# Python & Machine Learning Artifacts
 __pycache__/
+*.pyc
 *.pkl
+eda_plots.png
+
+# Virtual Environments (Massive local folders)
+.venv/
+venv/
+env/
+ENV/
+
+# OS-specific junk files
+.DS_Store
+Thumbs.db
