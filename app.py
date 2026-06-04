@@ -7,10 +7,8 @@ import pandas as pd
 import streamlit as st
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.svm import SVC
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
 
 warnings.filterwarnings('ignore')
 
@@ -24,7 +22,7 @@ st.set_page_config(
 @st.cache_resource(show_spinner=False)
 def load_and_train():
     if not os.path.exists('heart.csv'):
-        st.error("Error: 'heart.csv' file not found in the project directory.")
+        st.error("Error: 'heart.csv' file not found.")
         st.stop()
 
     df = pd.read_csv('heart.csv')
@@ -51,37 +49,16 @@ def load_and_train():
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
     
-    models = {
-        'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42),
-        'Gradient Boosting': GradientBoostingClassifier(n_estimators=100, random_state=42),
-        'SVM': SVC(kernel='rbf', probability=True, random_state=42),
-        'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42)
-    }
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X_train_scaled, y_train)
+    preds = model.predict(X_test_scaled)
+    accuracy = f"{accuracy_score(y_test, preds) * 100:.2f}%"
 
-    performance_matrix = {}
-    trained_models = {}
-    
-    for name, model in models.items():
-        model.fit(X_train_scaled, y_train)
-        preds = model.predict(X_test_scaled)
-        
-        performance_matrix[name] = {
-            'Accuracy': f"{accuracy_score(y_test, preds) * 100:.2f}%",
-            'Precision': f"{precision_score(y_test, preds) * 100:.2f}%",
-            'Recall': f"{recall_score(y_test, preds) * 100:.2f}%",
-            'F1-Score': f"{f1_score(y_test, preds) * 100:.2f}%"
-        }
-        trained_models[name] = model
-
-    rf_model = trained_models['Random Forest']
-    feature_importances = dict(zip(feature_names, rf_model.feature_importances_))
-
-    return trained_models, scaler, performance_matrix, feature_names, feature_importances
+    return model, scaler, feature_names, accuracy
 
 def get_medical_indices(m):
     if not m:
         return {}
-        
     sbp = m.get('restingBP', 120)
     hr = m.get('maxheartrate', 150)
     chol = m.get('serumcholestrol', 200)
@@ -128,7 +105,7 @@ def run_groq(chat_history, system_prompt):
         }
         
         payload = {
-            "model": "llama-3.3-70b-specdec",
+            "model": "llama-3.3-70b-versatile",
             "messages": [{"role": "system", "content": system_prompt}] + chat_history,
             "temperature": 0.15,
             "max_tokens": 1500
@@ -139,11 +116,10 @@ def run_groq(chat_history, system_prompt):
             return response.json()["choices"][0]["message"]["content"]
         else:
             return f"Error {response.status_code}: {response.text}"
-            
     except Exception as e:
         return f"Error: {str(e)}"
 
-models, scaler, performance_matrix, feature_names, feature_importances = load_and_train()
+model, scaler, feature_names, accuracy = load_and_train()
 
 st.title("Cardiovascular Clinical Decision Support System")
 st.caption("Developed by Arpan Das, Chandan Kumar Mishra & MD Belal")
@@ -176,16 +152,15 @@ with st.sidebar:
     noofmajorvessels = st.selectbox("Blocked Major Vessels", [0, 1, 2, 3])
 
     st.markdown("---")
-    selected_model = st.selectbox("Select ML Model Architecture", list(models.keys()))
     run_diagnostic = st.button("Run Diagnostic Prediction", type="primary", use_container_width=True)
 
 if run_diagnostic or 'patient_state' in st.session_state:
     
     if run_diagnostic:
         metrics_map = {
-            'age': age, 'gender': gender, 'chestpain': chestpain, 'restingBP': rbp_input if 'rbp_input' in locals() else restingBP,
-            'serumcholestrol': chol_input if 'chol_input' in locals() else serumcholestrol, 'fastingbloodsugar': fastingbloodsugar, 'restingrelectro': restingrelectro,
-            'maxheartrate': mhr_input if 'mhr_input' in locals() else maxheartrate, 'exerciseangia': exerciseangia, 'oldpeak': oldpeak,
+            'age': age, 'gender': gender, 'chestpain': chestpain, 'restingBP': restingBP,
+            'serumcholestrol': serumcholestrol, 'fastingbloodsugar': fastingbloodsugar, 'restingrelectro': restingrelectro,
+            'maxheartrate': maxheartrate, 'exerciseangia': exerciseangia, 'oldpeak': oldpeak,
             'slope': slope, 'noofmajorvessels': noofmajorvessels
         }
         
@@ -194,19 +169,13 @@ if run_diagnostic or 'patient_state' in st.session_state:
             row_vector.append(metrics_map.get(col, 0))
             
         scaled_vector = scaler.transform(np.array([row_vector]))
-        active_model = models[selected_model]
-        prediction_output = active_model.predict(scaled_vector)[0]
-        
-        if hasattr(active_model, "predict_proba"):
-            probability_output = active_model.predict_proba(scaled_vector)[0][1]
-        else:
-            probability_output = 1.0 if prediction_output == 1 else 0.0
+        prediction_output = model.predict(scaled_vector)[0]
+        probability_output = model.predict_proba(scaled_vector)[0][1]
             
         st.session_state['patient_state'] = {
             'metrics': metrics_map,
             'prediction': "POSITIVE (Risk Identified)" if prediction_output == 1 else "NEGATIVE (Normal Thresholds)",
-            'probability': probability_output,
-            'model_name': selected_model
+            'probability': probability_output
         }
 
     tab_dashboard, tab_chat, tab_metrics = st.tabs([
@@ -231,7 +200,7 @@ if run_diagnostic or 'patient_state' in st.session_state:
         with c2:
             st.metric(label="Rate Pressure Product (Workload)", value=f"{indices['rpp']} mmHg·bpm")
         with c3:
-            st.metric(label="Selected Algorithm Node", value=state['model_name'])
+            st.metric(label="Model System Accuracy", value=accuracy)
 
         if state['probability'] > 0.5:
             st.error(f"🚨 **High Risk Alert:** System classification output is {state['prediction']}.")
@@ -276,59 +245,80 @@ if run_diagnostic or 'patient_state' in st.session_state:
             st.session_state.chat_history_v6.append({"role": "user", "content": user_input})
 
             system_prompt = (
-                "ROLE AND SYSTEM LAYER OVERVIEW:\n"
-                "You are an Elite Interventional Cardiologist and Senior Data Scientist running inside a Clinical Decision Support System.\n\n"
-                "CRITICAL INSTRUCTIONS:\n"
-                "1. Do not include conversational filler, greetings, or polite introductory phrases. Begin directly with your analysis.\n"
-                "2. Do not repeat raw parameters back without medical context. Integrate them into clinical deductions.\n"
-                "3. Ground all opinions strictly in the synchronized dataset and the active machine learning model output.\n"
-                "4. Never apologize.\n\n"
-                "=== SYNCHRONIZED PATIENT DATA ===\n"
-                f"- Model Output Verdict: {state['prediction']}\n"
-                f"- Model Risk Probability: {state['probability'] * 100:.2f}%\n"
-                f"- Selected Model: {state['model_name']}\n"
-                f"- Rate Pressure Product (RPP): {indices['rpp']} mmHg·bpm\n"
-                f"- Chronotropic Capacity Index: {indices['chronotropic_index']}\n"
-                f"- Blood Pressure Tier: {indices['bp_stage']}\n"
-                f"- Cholesterol Risk Tier: {indices['lipid_stage']}\n"
-                f"- Ischemia Waveform Profile: {indices['ischemia_stage']}\n"
-                f"- Calcified Vessels: {indices['vessels']}\n"
-                f"- Raw Vector Log: {str(state['metrics'])}\n\n"
-                "=== REQUIRED OUTPUT FORMAT ===\n"
-                "Structure your clinical reasoning strictly using these headings:\n"
-                "### 1. 🔬 HEMODYNAMIC ANALYSIS\n"
-                "Analyze the Rate Pressure Product and Chronotropic Index. Explain how oxygen supply and heart workload interact for this specific profile.\n\n"
-                "### 2. 🫀 PATHOPHYSIOLOGICAL ISCHEMIA RISK\n"
-                "Evaluate the ST depression depth and slope morphology. Detail microvascular and subendocardial blood flow implications during strain.\n\n"
-                "### 3. 💻 DATA SCIENCE PIPELINE AUDIT\n"
-                "Explain how the active machine learning model evaluated this feature array. Highlight which parameters drove the final risk percentage prediction.\n\n"
-                "Maintain an authoritative, publication-grade academic tone."
+                "SYSTEM KNOWLEDGE AND OPERATIONAL EXECUTION MATRIX BIBLE\n"
+                "========================================================================\n"
+                "CORE EXECUTIVE ARCHITECTURE IDENTITY:\n"
+                "You are executing as the centralized Cognitive Reasoning Layer of an enterprise-grade Clinical Decision Support System (CDSS). "
+                "Your underlying architecture is an advanced stateful neuro-symbolic framework. Globally, your role maps to a triumvirate profile: "
+                "an elite Interventional Cardiologist with extensive clinical operations tenure, an academic Professor of Advanced Cardiovascular Pathophysiology, "
+                "and a Distinguished Principal Data Scientist specializing in complex biological pipeline architectures and high-entropy medical telemetry frameworks.\n\n"
+                "STRICT LOGICAL RESTRICTIONS AND OPERATIONAL CONSTRAINTS:\n"
+                "1. ELIMINATION OF FILLER PROTOCOL: You must bypass all conversational fluff. Do not output 'Hello', 'Thank you', 'Sure thing', 'As an AI...', "
+                "or conversational introductions. Begin directly with high-density analytical reasoning tokens.\n"
+                "2. NO VERBATIM ECHO STRATEGY: Do not repeat back raw features blindly. Translate raw inputs into derived physiological relationships.\n"
+                "3. Hallucination Guard: Ground every pathophysiological deduction strictly within the mathematical margins of the active classifier core.\n"
+                "4. Absolute Zero-Apology Protocol: Never apologize under any circumstances. If previous conversation parameters are queried, re-verify "
+                "against structural ground truths and deliver cold, accurate data matrices.\n\n"
+                "DEEP PATHOPHYSIOLOGICAL REFERENCE MANUAL AND MEDICAL TAXONOMY:\n"
+                "- Coronary Stenosis & Sheer-Stress Dynamics: When plaque narrows an epicardial artery, resting flow remains stable due to microvascular "
+                "autoregulation. However, under exercise workloads, standard vasodilation fails, leading to oxygen supply/demand mismatch.\n"
+                "- Rate Pressure Product (RPP Kinetics): Calculated as Systolic Blood Pressure multiplied by Heart Rate. It serves as an accurate, non-invasive surrogate "
+                "for Myocardial Oxygen Consumption (MVO2). Values exceeding 12,000 signify heightened myocardial workload; values over 20,000 "
+                "reflect extreme workload vectors where underlying arterial stenosis will precipitate subendocardial ischemia.\n"
+                "- Chronotropic Incompetence Indexing: The physiological failure of the heart to increase its rate match relative to metabolic demands during "
+                "exertion. Quantified by comparing peak heart rate against age-predicted maximum limits (220 - Age). Below 80% represents chronotropic "
+                "incompetence, often indicating advanced ischemic bundle branches or autonomic microvascular breakdown.\n"
+                "- ST-Segment Waveform Morphologies:\n"
+                "  * Horizontal ST Depression: Strong classic indicator of acute subendocardial ischemia. Represents localized delay in ventricular repolarization.\n"
+                "  * Downsloping ST Depression: Highest statistical positive predictive value for severe transmural multi-vessel CAD or left main coronary artery stenosis.\n"
+                "- Fluoroscopic Vessel Calcification Vectors: The count of principal coronary arteries showing calcification (0 to 3) is a direct structural marker "
+                "of global atherosclerotic burden. Within tree-based classification pipelines, this value operates as an immutable high-information split metric.\n"
+                "- Hypercholesterolemia and Atherosclerotic Plaque Cascades: Serum cholesterol elevations increase circulating low-density lipoproteins, "
+                "triggering subendothelial retention, macrophage activation, foam cell formation, and eventual fibrous cap degradation.\n\n"
+                "DATA SCIENCE AND MATHEMATICAL ANALYSIS SPECIFICATIONS:\n"
+                "- Random Forest Split Dynamics: Operates by optimizing Gini Impurity or Information Gain across hundreds of decorrelated decision trees. "
+                "High feature importance scores flag columns that provide maximal distribution balance shifts within the tree nodes.\n\n"
+                "=== LIVE CENTRAL DATASET DOSSIER ===\n"
+                f"- Primary Machine Learning Core Output Verdict: {state['prediction']}\n"
+                f"- Pipeline Algorithmic Predictive Risk Probability: {state['probability'] * 100:.6f}%\n"
+                f"- Computed Rate Pressure Product (RPP proxy for MVO2): {indices['rpp']} mmHg·bpm\n"
+                f"- Chronotropic Capacity Performance Index: {indices['chronotropic_index']}\n"
+                f"- AHA Hydrostatic Arterial Wall Pressure Scale: {indices['bp_stage']}\n"
+                f"- Atherosclerotic Endothelial Metabolic Burden Index: {indices['lipid_stage']}\n"
+                f"- Subendocardial Ischemic Phase Displacement Profile: {indices['ischemia_stage']}\n"
+                f"- Fluoroscopy Radiographic Tree Calcification Matrix: {indices['vessels']}\n"
+                f"- Active Vector Raw Input Payload Frame: {str(state['metrics'])}\n\n"
+                "=== EXPLICIT STRUCTURAL REGULATORY SCHEMA ===\n"
+                "Your reasoning output must match this publication-grade markdown syntax structure without exception:\n\n"
+                "### 1. 🔬 ADVANCED HEMODYNAMIC WORKLOAD KINETICS\n"
+                "Provide an exhaustive pathophysiological analysis mapping the interaction between resting BP and peak heart rate. "
+                "Detail how these numbers impact coronary perfusion pressures, myocardial oxygen requirements (MVO2), and "
+                "chronotropic response thresholds for this patient.\n\n"
+                "### 2. 🫀 ISCHEMIC WAVEFORM CONFIGURATION MATRIX\n"
+                "Evaluate the ST depression depth and slope configuration. Detail the microvascular and subendocardial flow velocity "
+                "mechanics under exertion. Contrast horizontal shifts or downsloping deceleration vectors with normal baselines.\n\n"
+                "### 3. 💻 DATA-SCIENCE INFRASTRUCTURE & ENSEMBLE PIPELINE AUDIT\n"
+                "Break down the mathematical reasoning of the active pipeline classifier. Explain which high-entropy variables "
+                "(such as fluoroscopy branches, angina classifications, or age parameters) forced the Gini impurity shifts or "
+                "hyperplane vector boundaries into this precise prediction probability percentage.\n\n"
+                "Maintain an elite, academic clinical tone throughout the entire multi-turn generation sequence."
             )
 
             active_window = st.session_state.chat_history_v6[-6:]
 
             with st.chat_message("assistant"):
-                with st.spinner("Processing analytical context over Groq gateway..."):
+                with st.spinner("Processing token array streams over Groq LPU cluster..."):
                     response_payload = run_groq(active_window, system_prompt)
                     st.markdown(response_payload)
                     
             st.session_state.chat_history_v6.append({"role": "assistant", "content": response_payload})
 
     with tab_metrics:
-        st.markdown("### Multi-Model Core Benchmark Rankings")
+        st.markdown("### Model Benchmark Performance")
         st.dataframe(pd.DataFrame(performance_matrix).T, use_container_width=True)
         
-        st.markdown("#### Global Feature Weights Map (Random Forest)")
+        st.markdown("#### Global Feature Importance Weights Map")
         st.json(feature_importances)
 
 else:
     st.info("💡 **Notice:** Machine learning arrays and Groq link connections are completely initialized. Configure the parameter inputs in the sidebar and click 'Run Diagnostic Prediction' to generate analytical tracking maps.")
-    
-    st.markdown("### Underlying Architecture Validation States")
-    h1, h2 = st.columns(2)
-    with h1:
-        st.success("✅ Main CSV Storage Matrix Secure: 'heart.csv' columns mapped perfectly.")
-        st.success(f"✅ Input Dimension Scope Isolated: Found {len(feature_names)} predictable columns.")
-    with h2:
-        st.success("✅ Cloud Secrets Link Active: Streamlit st.secrets key detected.")
-        st.success("✅ Algorithm Models Mapped: 4 structural classification pipelines verified.")
