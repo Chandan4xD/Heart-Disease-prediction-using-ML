@@ -6,9 +6,6 @@ import requests
 import pandas as pd
 import numpy as np
 import streamlit as st
-from dotenv import load_dotenv
-
-load_dotenv()
 
 warnings.filterwarnings('ignore')
 
@@ -143,10 +140,12 @@ def generate_cognitive_fallback(prompt, context):
         return "Insight compiled. Select 'Patient Clinical Summary' or 'Target Risk Factors' above to generate comprehensive analytical streams."
 
 def call_groq(prompt, system_instruction):
-    api_key = os.environ.get("GROQ_API_KEY", "")
-    if not api_key:
-        try: api_key = st.secrets.get("GROQ_API_KEY", "")
-        except Exception: pass
+    api_key = ""
+    try:
+        if "GROQ_API_KEY" in st.secrets:
+            api_key = st.secrets["GROQ_API_KEY"]
+    except Exception:
+        pass
 
     context_data = None
     if 'latest_pred' in st.session_state:
