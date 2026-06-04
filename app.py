@@ -99,7 +99,7 @@ def run_groq(chat_history, sys_prompt):
     try:
         api_key = st.secrets.get("GROQ_API_KEY", "")
         if not api_key:
-            return "Error: GROQ_API_KEY missing from secrets."
+            return "Error: GROQ_API_KEY identifier missing from secrets."
 
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
@@ -180,10 +180,10 @@ if run_diag or 'state' in st.session_state:
             'probability': prob
         }
 
-    tab_dash, tab_chat, tab_perf = st.tabs([
+    tab_dash, tab_chat, tab_about = st.tabs([
         "📊 Health Summary Dashboard", 
         "💬 Ask Your AI Companion", 
-        "⚙️ Core System Blueprint Accuracy"
+        "ℹ️ About PulseCheck"
     ])
 
     state = st.session_state['state']
@@ -275,12 +275,22 @@ if run_diag or 'state' in st.session_state:
                     
             st.session_state.history.append({"role": "assistant", "content": payload_res})
 
-    with tab_perf:
-        st.markdown("### System Dashboard Performance Details")
-        st.dataframe(pd.DataFrame(perf).T, use_container_width=True)
+    with tab_about:
+        st.markdown("## About PulseCheck")
+        st.markdown("---")
+        st.markdown("> **PulseCheck** is an intelligent assistant built to translate data-driven pattern analysis into helpful, friendly health insights that anyone can look at and understand instantly.")
         
-        st.markdown("#### System Input Parameter Value Priorities")
-        st.json(imp)
+        st.markdown("### 👥 Engineering Team")
+        st.markdown("This system was engineered and implemented by:")
+        st.markdown("* **Arpan Das**")
+        st.markdown("* **Chandan Kumar Mishra**")
+        st.markdown("* **MD Belal**")
+        
+        st.markdown("### ⚙️ How the Application Works")
+        st.markdown("PulseCheck relies on an integrated, intelligent pipeline to analyze your vitals securely:")
+        st.markdown("1. **Data Intake:** When you adjust inputs in the sidebar and trigger an evaluation, the framework packages your vitals into a structured array.")
+        st.markdown("2. **Predictive Machine Learning Classifier:** Your vitals are instantly matched against thousands of clinical entries using a trained **Random Forest** data pattern classifier to determine statistical likelihoods.")
+        st.markdown("3. **Context Enrichment & AI Consultation:** Behind the scenes, the tool computes supplementary health indices (like heart workload ratios) and links up with a specialized AI layer to convert numbers into a conversational, easy-to-understand breakdown.")
 
 else:
     st.info("💡 **Welcome:** PulseCheck is ready. Adjust your vitals in the left panel and click 'Check My Heart Health Status' to visualize your metrics.")
