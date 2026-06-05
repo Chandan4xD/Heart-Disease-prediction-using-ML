@@ -1,5 +1,5 @@
 import os
-import time
+import pickle
 import warnings
 import requests
 import numpy as np
@@ -7,22 +7,28 @@ import pandas as pd
 import streamlit as st
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
+from sklearn.naive_bayes import GaussianNB
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 warnings.filterwarnings('ignore')
 
-st.set_page_config(
-    page_title="PulseCheck", 
-    layout="wide", 
-    page_icon="🫀",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Heart Disease Predictor", layout="wide")
 
 @st.cache_resource(show_spinner=False)
-def train_model():
+def get_models():
+    if all(os.path.exists(f) for f in ['best_model.pkl', 'scaler.pkl', 'results.pkl', 'feature_names.pkl']):
+        with open('best_model.pkl', 'rb') as f: model = pickle.load(f)
+        with open('scaler.pkl', 'rb') as f: scaler = pickle.load(f)
+        with open('results.pkl', 'rb') as f: results = pickle.load(f)
+        with open('feature_names.pkl', 'rb') as f: feature_names = pickle.load(f)
+        return model, scaler, results, feature_names
+
     if not os.path.exists('heart.csv'):
-        st.error("Error: 'heart.csv' file not found.")
+        st.error("⚠️ Error: 'heart.csv' not found.")
         st.stop()
 
     df = pd.read_csv('heart.csv')
@@ -30,18 +36,11 @@ def train_model():
     
     if 'patientid' in df.columns:
         df.drop('patientid', axis=1, inplace=True)
-        
-    rename_dict = {
-        'sex': 'gender', 'cp': 'chestpain', 'trestbps': 'restingBP', 
-        'chol': 'serumcholestrol', 'fbs': 'fastingbloodsugar', 
-        'restecg': 'restingrelectro', 'thalach': 'maxheartrate', 
-        'exang': 'exerciseangia', 'ca': 'noofmajorvessels', 'Classification': 'target'
-    }
-    df.rename(columns=rename_dict, inplace=True)
+    if 'Classification' in df.columns and 'target' not in df.columns:
+        df.rename(columns={'Classification': 'target'}, inplace=True)
     
-    X = df.drop('target', axis=1)
-    y = df['target']
-    feats = X.columns.tolist()
+    X, y = df.drop('target', axis=1), df['target']
+    feature_names = X.columns.tolist()
     
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     
@@ -49,15 +48,36 @@ def train_model():
     X_train_s = scaler.fit_transform(X_train)
     X_test_s = scaler.transform(X_test)
     
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
-    model.fit(X_train_s, y_train)
-    preds = model.predict(X_test_s)
-    acc = f"{accuracy_score(y_test, preds) * 100:.2f}%"
-    
-    perf = {'Random Forest': {'Accuracy': acc}}
-    imp = dict(zip(feats, model.feature_importances_))
+    models = {
+        'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42),
+        'SVM': SVC(kernel='rbf', probability=True, random_state=42),
+        'Decision Tree': DecisionTreeClassifier(random_state=42),
+        'KNN': KNeighborsClassifier(n_neighbors=5),
+        'Naive Bayes': GaussianNB()
+    }
 
-    return model, scaler, feats, acc, perf, imp
+    results = {}
+    trained_models = {}
+    for name, clf in models.items():
+        clf.fit(X_train_s, y_train)
+        preds = clf.predict(X_test_s)
+            
+        results[name] = {
+            'Accuracy': round(accuracy_score(y_test, preds) * 100, 2),
+            'Precision': round(precision_score(y_test, preds) * 100, 2),
+            'Recall': round(recall_score(y_test, preds) * 100, 2),
+            'F1-Score': round(f1_score(y_test, preds) * 100, 2),
+        }
+        trained_models[name] = clf
+
+    best_name = max(results, key=lambda k: results[k]['Accuracy'])
+    
+    with open('best_model.pkl', 'wb') as f: pickle.dump(trained_models[best_name], f)
+    with open('scaler.pkl', 'wb') as f: pickle.dump(scaler, f)
+    with open('results.pkl', 'wb') as f: pickle.dump(results, f)
+    with open('feature_names.pkl', 'wb') as f: pickle.dump(feature_names, f)
+    
+    return trained_models[best_name], scaler, results, feature_names
 
 def calc_metrics(m):
     if not m:
@@ -122,111 +142,92 @@ def run_groq(chat_history, sys_prompt):
     except Exception as e:
         return f"Error: {str(e)}"
 
-model, scaler, feats, acc, perf, imp = train_model()
+st.title("Heart Disease Prediction System")
+st.caption("Developed by Arpan, Chandan & MD Belal")
 
-st.title("PulseCheck")
-st.caption("AI Smart Assistant for Personal Heart Health Insights")
+model, scaler, results, feature_names = get_models()
+best_algo = max(results, key=lambda k: results[k]['Accuracy'])
 
-with st.sidebar:
-    st.header("Your Vitals")
-    st.markdown("---")
-    
-    age = st.slider("Age", 18, 100, 52)
-    gender_txt = st.radio("Sex", ["Female", "Male"], index=1, horizontal=True)
-    gender = 1 if "Male" in gender_txt else 0
-    
-    cp = st.selectbox("Chest Pain Experience", [0, 1, 2, 3], 
-                      format_func=lambda x: {0: "No Pain", 1: "Severe Pain", 2: "Mild Pain", 3: "Uncomfortable Pressure"}[x])
-    
-    sbp = st.number_input("Blood Pressure (Systolic)", 80, 220, 125)
-    chol = st.number_input("Cholesterol Level", 100, 600, 210)
-    fbs = st.radio("Fasting Blood Sugar > 120 mg/dl", ["No", "Yes"], index=0, horizontal=True)
-    fbs_val = 1 if fbs == "Yes" else 0
-    
-    ecg = st.selectbox("Resting ECG Result", [0, 1, 2],
-                       format_func=lambda x: {0: "Normal Baseline", 1: "Slight Wave Change", 2: "Enlarged Heart Muscle"}[x])
-    
-    hr = st.number_input("Highest Exercise Heart Rate Achieved", 60, 220, 145)
-    exang = st.radio("Chest Pain Triggered by Exercise", ["No", "Yes"], index=0, horizontal=True)
-    exang_val = 1 if exang == "Yes" else 0
-    
-    op = st.slider("ECG Stress Shift Depth (ST Change)", 0.0, 7.0, 1.0, step=0.1)
-    slope = st.selectbox("ECG Wave Slope Shape", [1, 2, 3],
-                         format_func=lambda x: {1: "Sloping Up (Better)", 2: "Flat (Warning)", 3: "Sloping Down (Risk)"}[x])
-    
-    vess = st.selectbox("Number of Blocked Major Blood Vessels", [0, 1, 2, 3])
+tab1, tab2, tab3 = st.tabs(["Predict", "Performance", "About"])
 
-    st.markdown("---")
-    run_diag = st.button("Check My Heart Health Status", type="primary", use_container_width=True)
-
-if run_diag or 'state' in st.session_state:
+with tab1:
+    st.write("### Input Clinical Parameters")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        age = st.slider("Age", 20, 80, 50)
+        gender = st.radio("Gender", ["Female (0)", "Male (1)"], index=1, horizontal=True)
+        gender_val = 1 if "Male" in gender else 0
+        chestpain = st.selectbox("Chest Pain Type (chestpain)", [0, 1, 2, 3])
+        restingrelectro = st.selectbox("Resting ECG (restingrelectro)", [0, 1, 2])
+    with c2:
+        resting_bp = st.number_input("Resting BP (resting BP)", 90, 200, 120)
+        serumcholestrol = st.number_input("Serum Cholesterol (serumcholestrol)", 120, 600, 200)
+        fastingbloodsugar = st.radio("Fasting Blood Sugar > 120 (fastingbloodsugar)", [0, 1], horizontal=True)
+        slope = st.selectbox("ST Slope (slope)", [1, 2, 3])
+    with c3:
+        maxheartrate = st.number_input("Max Heart Rate (maxheartrate)", 70, 210, 150)
+        exerciseangia = st.radio("Exercise Angina (exerciseangia)", [0, 1], horizontal=True)
+        oldpeak = st.number_input("ST Depression (oldpeak)", 0.0, 6.2, 1.0)
+        noofmajorvessels = st.selectbox("Major Vessels (noofmajorvessels)", [0, 1, 2, 3])
     
-    if run_diag:
-        data = {
-            'age': age, 'gender': gender, 'chestpain': cp, 'restingBP': sbp,
-            'serumcholestrol': chol, 'fastingbloodsugar': fbs_val, 'restingrelectro': ecg,
-            'maxheartrate': hr, 'exerciseangia': exang_val, 'oldpeak': op,
-            'slope': slope, 'noofmajorvessels': vess
+    predict_clicked = st.button("Predict Result", type="primary")
+    
+    if predict_clicked:
+        input_dict = {
+            'age': age,
+            'gender': gender_val,
+            'chestpain': chestpain,
+            'restingBP': resting_bp,
+            'serumcholestrol': serumcholestrol,
+            'fastingbloodsugar': fastingbloodsugar,
+            'restingrelectro': restingrelectro,
+            'maxheartrate': maxheartrate,
+            'exerciseangia': exerciseangia,
+            'oldpeak': oldpeak,
+            'slope': slope,
+            'noofmajorvessels': noofmajorvessels
         }
         
-        vector = [data.get(col, 0) for col in feats]
-        vector_scaled = scaler.transform(np.array([vector]))
-        pred = model.predict(vector_scaled)[0]
-        prob = model.predict_proba(vector_scaled)[0][1]
-            
-        st.session_state['state'] = {
-            'metrics': data,
-            'prediction': "High Heart Disease Risk Warning" if pred == 1 else "Normal Low Risk Status",
-            'probability': prob
-        }
+        try:
+            user_input = np.array([[input_dict[col] for col in feature_names]])
+            scaled = scaler.transform(user_input) 
+            pred = model.predict(scaled)[0]
+            prob = model.predict_proba(scaled)[0][1] if hasattr(model, "predict_proba") else (1.0 if pred == 1 else 0.0)
+                
+            st.session_state['state'] = {
+                'metrics': input_dict,
+                'prediction': "POSITIVE (Risk Identified)" if pred == 1 else "NEGATIVE (Normal Thresholds)",
+                'probability': prob
+            }
+        except KeyError as e:
+            st.error(f"Dataset column mismatch. Could not find column: {e}. Please ensure you are using the correct Mendeley dataset.")
 
-    tab_dash, tab_chat, tab_about = st.tabs([
-        "📊 Health Summary Dashboard", 
-        "💬 Ask Your AI Companion", 
-        "ℹ️ About PulseCheck"
-    ])
-
-    state = st.session_state['state']
-    idx = calc_metrics(state['metrics'])
-
-    with tab_dash:
-        st.markdown("### Heart Health Evaluation Results")
+    if 'state' in st.session_state:
+        state = st.session_state['state']
+        idx = calc_metrics(state['metrics'])
         
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric(
-                label="Calculated Heart Risk Likelihood", 
-                value=f"{state['probability'] * 100:.1f}%",
-                delta="Elevated Warning Risk" if state['probability'] > 0.5 else "Safe Level"
-            )
-        with col2:
-            st.metric(label="Myocardial Heart Workload Score", value=f"{idx['rpp']}")
-        with col3:
-            st.metric(label="Overall Testing Model Accuracy", value=acc)
-
-        if state['probability'] > 0.5:
-            st.error(f"⚠️ **Attention Required:** Our AI assistant flagged an elevated condition matching potential heart strain patterns: {state['prediction']}.")
+        st.markdown("---")
+        st.write("### Diagnostic Status")
+        
+        if "POSITIVE" in state['prediction']:
+            st.error(f"⚠️ Heart Disease Detected (Risk Probability: {state['probability'] * 100:.2f}%)")
         else:
-            st.success(f"✅ **Looking Good:** Your current inputs sit comfortably inside a low-risk profile: {state['prediction']}.")
-
-        st.markdown("#### Simple Health Explanations")
-        b1, b2, b3 = st.columns(3)
-        b1.info(f"**Blood Pressure Zone:** \n\n {idx['bp_stage']}")
-        b2.info(f"**Cholesterol Health Status:** \n\n {idx['lipid_stage']}")
-        b3.info(f"**Heart Muscle Blood Flow:** \n\n {idx['ischemia_stage']}")
-
-    with tab_chat:
-        st.markdown("### Chat with PulseCheck AI")
-        
+            st.success(f"✅ No Heart Disease Detected (Risk Probability: {state['probability'] * 100:.2f}%)")
+            
         m1, m2, m3 = st.columns(3)
-        override = None
+        m1.info(f"**Blood Pressure:** {idx['bp_stage']}")
+        m2.info(f"**Cholesterol:** {idx['lipid_stage']}")
+        m3.info(f"**Heart Muscle Flow:** {idx['ischemia_stage']}")
         
-        if m1.button("📋 Summarize My Case in Simple Words", use_container_width=True):
+        st.markdown("---")
+        st.write("💬 **PulseCheck AI Assistant**")
+        
+        mac1, mac2 = st.columns(2)
+        override = None
+        if mac1.button("📋 Summarize Case Profile", use_container_width=True):
             override = "Please explain my patient numbers, my risk percentage, and my general heart profile in simple English without medical jargon."
-        if m2.button("🏃‍♂️ Explain My Heart Strain & Exercise Stats", use_container_width=True):
+        if mac2.button("🏃‍♂️ Explain Heart Workload & Stress", use_container_width=True):
             override = "Explain how my heart handles exercise based on my peak heart rate, workload scores, and the ECG slope lines."
-        if m3.button("💻 How did the computer find this risk score?", use_container_width=True):
-            override = "Explain in easy terms how the machine learning model weighed my inputs to compute this specific score."
 
         if "history" not in st.session_state:
             st.session_state.history = [
@@ -237,7 +238,7 @@ if run_diag or 'state' in st.session_state:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        user_in = st.chat_input("Ask a quick question about your heart stats...")
+        user_in = st.chat_input("Ask an AI question about your diagnostic values...")
         if override:
             user_in = override
 
@@ -257,6 +258,7 @@ if run_diag or 'state' in st.session_state:
                 "=== CONNECTED HEALTH CHART ===\n"
                 f"- Computer Model Risk Conclusion: {state['prediction']}\n"
                 f"- Risk Probability Score: {state['probability'] * 100:.1f}%\n"
+                f"- Active Pipeline Engine: {best_algo}\n"
                 f"- Pumping Workload Score: {idx['rpp']}\n"
                 f"- Exercise Capacity limit reached: {idx['chrono_idx']}\n"
                 f"- Blood Pressure Zone: {idx['bp_stage']}\n"
@@ -269,28 +271,44 @@ if run_diag or 'state' in st.session_state:
             window = st.session_state.history[-6:]
 
             with st.chat_message("assistant"):
-                with st.spinner("Talking to PulseCheck core..."):
+                with st.spinner("Analyzing stats..."):
                     payload_res = run_groq(window, sys_prompt)
                     st.markdown(payload_res)
                     
             st.session_state.history.append({"role": "assistant", "content": payload_res})
+            st.rerun()
 
-    with tab_about:
-        st.markdown("## About PulseCheck")
-        st.markdown("---")
-        st.markdown("> **PulseCheck** is an intelligent assistant built to translate data-driven pattern analysis into helpful, friendly health insights that anyone can look at and understand instantly.")
-        
-        st.markdown("### 👥 Engineering Team")
-        st.markdown("This system was engineered and implemented by:")
-        st.markdown("* **Arpan Das**")
-        st.markdown("* **Chandan Kumar Mishra**")
-        st.markdown("* **MD Belal**")
-        
-        st.markdown("### ⚙️ How the Application Works")
-        st.markdown("PulseCheck relies on an integrated, intelligent pipeline to analyze your vitals securely:")
-        st.markdown("1. **Data Intake:** When you adjust inputs in the sidebar and trigger an evaluation, the framework packages your vitals into a structured array.")
-        st.markdown("2. **Predictive Machine Learning Classifier:** Your vitals are instantly matched against thousands of clinical entries using a trained **Random Forest** data pattern classifier to determine statistical likelihoods.")
-        st.markdown("3. **Context Enrichment & AI Consultation:** Behind the scenes, the tool computes supplementary health indices (like heart workload ratios) and links up with a specialized AI layer to convert numbers into a conversational, easy-to-understand breakdown.")
+with tab2:
+    st.write("### Model Performance Metrics")
+    df_res = pd.DataFrame(results).T.reset_index()
+    df_res.columns = ['Model', 'Accuracy', 'Precision', 'Recall', 'F1-Score']
+    df_res = df_res.sort_values(by=['Accuracy', 'F1-Score'], ascending=[False, False]).reset_index(drop=True)
+    st.dataframe(df_res, use_container_width=True)
 
-else:
-    st.info("💡 **Welcome:** PulseCheck is ready. Adjust your vitals in the left panel and click 'Check My Heart Health Status' to visualize your metrics.")
+with tab3:
+    st.markdown("### 🧬 Project Overview")
+    st.info(
+        "This application is a **Clinical Decision Support System (CDSS)** powered by Machine Learning. "
+        "It is designed to evaluate the likelihood of cardiovascular disease based on standard non-invasive clinical metrics."
+    )
+    
+    st.markdown("### 📊 Dataset & Architecture")
+    st.markdown("""
+    * **Data Source:** Indian Cardiovascular Disease Dataset (Mendeley Data).
+    * **Feature Engineering:** 12 curated clinical attributes localized for accurate demographic prediction.
+    * **Inference Engine:** An automated pipeline evaluating multiple classification algorithms (Random Forest, SVM, Decision Tree, KNN, Naive Bayes) to deploy the optimal predictive model.
+    """)
+    
+    st.markdown("### 👨‍💻 Development Team")
+    st.markdown("""
+    Engineered at **B.A. College of Engineering and Technology (BACET)** by:
+    * **Arpan Das**
+    * **Chandan Kumar Mishra**
+    * **MD Belal**
+    """)
+    
+    st.markdown("---")
+    st.warning(
+        "**Clinical Disclaimer:** This software is developed for academic and research purposes. "
+        "It is not a substitute for professional medical advice, diagnosis, or treatment."
+    )
